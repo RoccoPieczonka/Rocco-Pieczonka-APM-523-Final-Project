@@ -1,0 +1,74 @@
+data = [
+    0.5118  0.9505  0.1442  0.9486  0.6413  0.8526  0.5929  0.2801
+    0.5118  0.9505  0.1442  0.9486  0.6413  0.8526  0.5929  0.2801
+    0.5496  0.0276  0.7595  0.5381  0.1479  0.8196  0.6833  0.7871
+    0.3297  0.7884  0.3032  0.4535  0.1916  0.8024  0.1913  0.0816
+    0.1297  0.9494  0.4032  0.4535  0.1916  0.8024  0.1913  0.4016
+    0.7504  0.2804  0.4852  0.9807  0.2740  0.0071  0.6457  0.7199
+    0.9617  0.7248  0.5412  0.2769  0.8356  0.2819  0.2152  0.6383
+    0.1607  0.9699  0.5161  0.1159  0.8051  0.9637  0.1505  0.4822
+    0.6235  0.7767  0.6101  0.9179  0.8057  0.9627  0.2225  0.6265
+    0.0396  0.5286  0.4593  0.0623  0.6735  0.9191  0.8268  0.8855
+];
+
+s0 = data(:, 1); s1 = data(:, 2); s2 = data(:, 3); s3 = data(:, 4);
+y0 = data(:, 5); y1 = data(:, 6); y2 = data(:, 7); y3 = data(:, 8);
+
+% Problem parameters
+n = 10;    % Dimensions
+k = 4;     % Iterations
+
+% Initialize 
+S = [s0 s1 s2 s3];  % S_4
+Y = [y0 y1 y2 y3];  % Y_4
+B0 = eye(n);
+H0 = B0;
+
+% Compute L_k
+L = zeros(k, k);
+for i = 1:k
+    for j = 1:i-1
+        L(i, j) = S(:, i)' * Y(:, j);
+    end
+end
+
+% Compute D_k 
+D = zeros(k, k);
+for i = 1:k
+    D(i, i) = S(:, i)' * Y(:, i);
+end
+
+% Compute T_k 
+T = zeros(k, k);
+for i = 1:k
+    for j = i:k
+        T(i, j) = S(:, i)' * Y(:, j);
+    end
+end
+
+% Compute B_k 
+U = [B0 * S Y];
+M = [S' * B0 * S L; L' -D];
+V = [S' * B0; Y'];
+B_k = B0 - U * (M \ V);
+disp('B_k from compact representation:');
+disp(B_k);
+
+% Compute H_k 
+Q = [S' * B0 * S  L + T; (L + T)'  Y' * H0 * Y];  % 2k x 2k (8 x 8)
+term1 = H0 * U / M;
+term2 = eye(2*k) - Q / M;
+term3 = V * H0;
+H_k = H0 + term1 * (term2 \ term3);
+disp('H_k from derived formula:');
+disp(H_k);
+
+% Verify 
+identity_check = H_k * B_k - eye(n);
+fro_norm = norm(identity_check, 'fro');
+disp('Frobenius norm of H_k * B_k - I:');
+disp(fro_norm);
+disp('Symmetry check for B_k (norm of B_k - B_k^T):');
+disp(norm(B_k - B_k', 'fro'));
+disp('Symmetry check for H_k (norm of H_k - H_k^T):');
+disp(norm(H_k - H_k', 'fro'));
