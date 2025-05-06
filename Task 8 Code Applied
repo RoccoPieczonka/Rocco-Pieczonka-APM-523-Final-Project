@@ -1,0 +1,127 @@
+data = [
+    0.5118  0.9505  0.1442  0.9486  0.6413  0.8526  0.5929  0.2801
+    0.5118  0.9505  0.1442  0.9486  0.6413  0.8526  0.5929  0.2801
+    0.5496  0.0276  0.7595  0.5381  0.1479  0.8196  0.6833  0.7871
+    0.3297  0.7884  0.3032  0.4535  0.1916  0.8024  0.1913  0.0816
+    0.1297  0.9494  0.4032  0.4535  0.1916  0.8024  0.1913  0.4016
+    0.7504  0.2804  0.4852  0.9807  0.2740  0.0071  0.6457  0.7199
+    0.9617  0.7248  0.5412  0.2769  0.8356  0.2819  0.2152  0.6383
+    0.1607  0.9699  0.5161  0.1159  0.8051  0.9637  0.1505  0.4822
+    0.6235  0.7767  0.6101  0.9179  0.8057  0.9627  0.2225  0.6265
+    0.0396  0.5286  0.4593  0.0623  0.6735  0.9191  0.8268  0.8855
+];
+
+n = 10;
+m = 20;
+rng(42);
+
+A = zeros(m, n);
+b = zeros(m, 1);
+for i = 1:m
+    idx = mod(i-1, 8) + 1;
+    A(i, :) = data(:, idx)' + 0.1 * randn(1, n);
+    b(i) = sign(randn);
+end
+lambda = 0.01;
+
+loss = @(w) (1/m) * sum(log(1 + exp(-b .* (A * w)))) + (lambda/2) * norm(w)^2;
+
+grad = @(w) (1/m) * sum((-b .* exp(-b .* (A * w)) ./ (1 + exp(-b .* (A * w)))) .* A, 1)' + lambda * w;
+
+max_iter = 20;
+w_init = zeros(n, 1);
+loss_task8 = zeros(max_iter + 1, 1);
+loss_bfgs = zeros(max_iter + 1, 1);
+loss_gd = zeros(max_iter + 1, 1);
+
+w = w_init;
+B = eye(n);
+loss_task8(1) = loss(w);
+S = []; Y = []; C = [];
+for k = 1:max_iter
+    g = grad(w);
+    p = -B \ g;
+    alpha = backtracking_line_search(w, g, p, loss, grad);
+    s = alpha * p;
+    w_new = w + s;
+    g_new = grad(w_new);
+    y = g_new - g;
+    c = s;
+    w = w_new;
+    
+    wi = y - B * s;
+    denom = c' * s;
+    if abs(denom) < eps
+        warning('Denominator c_k^T s_k near zero at iteration %d', k);
+        break;
+    end
+    term1 = (wi * c' + c * wi') / denom;
+    term2 = (wi' * s) / (denom^2) * (c * c');
+    B = B + term1 - term2;
+    
+    S = [S s];
+    Y = [Y y];
+    C = [C c];
+    
+    loss_task8(k+1) = loss(w);
+end
+
+w = w_init;
+B = eye(n);
+loss_bfgs(1) = loss(w);
+for k = 1:max_iter
+    g = grad(w);
+    p = -B \ g;
+    alpha = backtracking_line_search(w, g, p, loss, grad);
+    s = alpha * p;
+    w_new = w + s;
+    g_new = grad(w_new);
+    y = g_new - g;
+    w = w_new;
+    
+    rho = 1 / (y' * s);
+    if abs(y' * s) < eps
+        warning('Denominator y_k^T s_k near zero at iteration %d', k);
+        break;
+    end
+    term1 = y * y' * rho;
+    term2 = B * s * s' * B' / (s' * B * s);
+    B = B + term1 - term2;
+    
+    loss_bfgs(k+1) = loss(w);
+end
+
+w = w_init;
+loss_gd(1) = loss(w);
+alpha = 0.1;
+for k = 1:max_iter
+    g = grad(w);
+    w = w - alpha * g;
+    loss_gd(k+1) = loss(w);
+end
+
+figure;
+plot(0:max_iter, loss_task8, '-o', 'LineWidth', 2, 'DisplayName', 'Task 8');
+hold on;
+plot(0:max_iter, loss_bfgs, '-s', 'LineWidth', 2, 'DisplayName', 'BFGS');
+plot(0:max_iter, loss_gd, '-^', 'LineWidth', 2, 'DisplayName', 'Gradient Descent');
+xlabel('Iteration');
+ylabel('Loss');
+title('Logistic Regression Optimization');
+legend('show');
+grid on;
+set(gca, 'FontSize', 12);
+saveas(gcf, 'logistic_regression_loss.png');
+
+function alpha = backtracking_line_search(w, g, p, loss, grad)
+    alpha = 1;
+    c = 0.5;
+    rho = 0.5;
+    while loss(w + alpha * p) > loss(w) + c * alpha * g' * p
+        alpha = rho * alpha;
+        if alpha < 1e-6
+            alpha = 1e-3;
+            break;
+        end
+    end
+end
