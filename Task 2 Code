@@ -1,0 +1,138 @@
+function [x, fval, k, fvals] = BFGS_optimization(f, grad_f, x0, tol, max_iter)
+    k = 0;
+    x = x0;
+    n = length(x0);
+    H = eye(n); 
+    fvals = zeros(max_iter, 1); 
+    
+    while k < max_iter
+        g = grad_f(x); 
+        
+        if norm(g) < tol
+            break;
+        end
+        
+        p = -H * g; 
+        
+        if g' * p >= 0
+            H = eye(n);
+            p = -g;
+        end
+        
+        alpha = strong_wolfe_line_search(f, grad_f, x, p);
+        
+        s = alpha * p;
+        x_new = x + s;
+        g_new = grad_f(x_new);
+        y = g_new - g;
+        
+        if y' * s <= 1e-10
+            H = eye(n); 
+        else
+            rho = 1 / (y' * s);
+            I = eye(n);
+            H = (I - rho * (s * y')) * H * (I - rho * (y * s')) + rho * (s * s');
+
+            H = (H + H') / 2;
+        end
+        
+        if norm(s) < tol
+            break;
+        end
+        
+        x = x_new;
+        k = k + 1;
+        fvals(k) = f(x); 
+    end
+    
+    fval = f(x);
+    fvals = fvals(1:k); 
+end
+
+function alpha = strong_wolfe_line_search(f, grad_f, x, p)
+    c1 = 1e-4;
+    c2 = 0.9;
+    alpha = 1;
+    rho = 0.5;
+    max_iter = 20;
+    
+    phi = @(a) f(x + a * p);
+    dphi = @(a) grad_f(x + a * p)' * p;
+    phi0 = phi(0);
+    dphi0 = dphi(0);
+    
+    for i = 1:max_iter
+        if phi(alpha) > phi0 + c1 * alpha * dphi0 || (i > 1 && phi(alpha) >= phi(alpha / rho))
+            alpha = zoom(phi, dphi, 0, alpha, c1, c2, phi0, dphi0);
+            return;
+        end
+        if abs(dphi(alpha)) <= c2 * abs(dphi0)
+            return;
+        end
+        if dphi(alpha) >= 0
+            alpha = zoom(phi, dphi, alpha, alpha / rho, c1, c2, phi0, dphi0);
+            return;
+        end
+        alpha = alpha / rho;
+    end
+end
+
+function alpha = zoom(phi, dphi, alpha_lo, alpha_hi, c1, c2, phi0, dphi0)
+    max_iter = 20;
+    for i = 1:max_iter
+        alpha = 0.5 * (alpha_lo + alpha_hi);
+        phi_alpha = phi(alpha);
+        if phi_alpha > phi0 + c1 * alpha * dphi0 || phi_alpha >= phi(alpha_lo)
+            alpha_hi = alpha;
+        else
+            dphi_alpha = dphi(alpha);
+            if abs(dphi_alpha) <= c2 * abs(dphi0)
+                return;
+            end
+            if dphi_alpha * (alpha_hi - alpha_lo) >= 0
+                alpha_hi = alpha_lo;
+            end
+            alpha_lo = alpha;
+        end
+    end
+end
+
+function f = even_rosenbrock_f(x)
+    n = length(x);
+    f = 0;
+    for i = 1:2:n-1
+        f = f + 100 * (x(i+1) - x(i)^2)^2 + (1 - x(i))^2;
+    end
+end
+
+function g = even_rosenbrock_grad(x)
+    n = length(x);
+    g = zeros(n, 1);
+    for i = 1:2:n-1
+        g(i) = -400 * x(i) * (x(i+1) - x(i)^2) - 2 * (1 - x(i));
+        g(i+1) = 200 * (x(i+1) - x(i)^2);
+    end
+end
+
+% Test 
+x0 = zeros(50, 1);  
+tol = 1e-6;         
+max_iter = 1000;  
+
+[x, fval, k, fvals] = BFGS_optimization(@even_rosenbrock_f, @even_rosenbrock_grad, x0, tol, max_iter);
+
+disp('Optimized x:');
+disp(x);
+disp('Function value at minimum:');
+disp(fval);
+disp('Number of iterations:');
+disp(k);
+
+% Plot 
+figure;
+semilogy(1:length(fvals), fvals, 'b-', 'LineWidth', 2);
+xlabel('Iteration');
+ylabel('Function Value (log scale)');
+title('Convergence of BFGS on Even Rosenbrock Function');
+grid on;
+saveas(gcf, 'task2_convergence.png');
