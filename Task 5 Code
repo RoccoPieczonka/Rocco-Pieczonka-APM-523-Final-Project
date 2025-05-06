@@ -1,0 +1,96 @@
+data = [
+    0.5118  0.9505  0.1442  0.9486  0.6413  0.8526  0.5929  0.2601
+    0.3118  0.4233  0.8277  0.4092  0.8399  0.5095  0.5109  0.7530
+    0.5496  0.0276  0.7535  0.5381  0.1479  0.8196  0.6833  0.7871
+    0.3297  0.7884  0.3032  0.4535  0.1916  0.8024  0.1913  0.0816
+    0.1340  0.4031  0.2035  0.2623  0.8552  0.8613  0.8765  0.4719
+    0.7504  0.2804  0.4852  0.9807  0.2740  0.0071  0.6457  0.7199
+    0.9617  0.7248  0.5412  0.2769  0.8356  0.2819  0.2152  0.6393
+    0.1607  0.9699  0.5161  0.1159  0.8051  0.9637  0.1505  0.4822
+    0.6235  0.7767  0.6130  0.9173  0.8947  0.4227  0.5895  0.0245
+    0.0396  0.5286  0.4593  0.0623  0.6735  0.9191  0.8268  0.8855
+];
+
+s0 = data(:, 1); s1 = data(:, 2); s2 = data(:, 3); s3 = data(:, 4);
+y0 = data(:, 5); y1 = data(:, 6); y2 = data(:, 7); y3 = data(:, 8);
+
+n = 10; 
+m = 3;
+k = 4;
+
+S = [s1 s2 s3]; 
+Y = [y1 y2 y3];
+
+B0 = eye(n);
+
+L = zeros(m, m); 
+D = zeros(m, m); 
+for i = 1:m
+    siT_yi = S(:, i)' * Y(:, i);
+    if siT_yi <= 1e-10
+        error('Curvature condition failed for s_%d^T y_%d', i-1, i-1);
+    end
+    D(i, i) = siT_yi; 
+    for j = 1:i-1
+        L(i, j) = S(:, i)' * Y(:, j);
+    end
+end
+
+SkT_B0_Sk = S' * B0 * S;
+M = [SkT_B0_Sk L; L' -D];
+U = [B0 * S Y];
+V = [S' * B0; Y'];
+B = B0 - U * (M \ V);
+disp('B_3^(4) before update:');
+disp(B);
+
+symmetry_norm_before = norm(B - B', 'fro');
+fprintf('Symmetry check for B_3^(4): %e\n', symmetry_norm_before);
+H = inv(B);
+frobenius_norm_before = norm(H * B - eye(n), 'fro');
+fprintf('Frobenius norm of H * B_3^(4) - I: %e\n', frobenius_norm_before);
+
+x0 = zeros(10, 1);
+m_lbfgs = 4; 
+tol = 1e-4;
+max_iter = 4; 
+[~, ~, ~, ~, ~, S_full, Y_full] = lbfgs_task4(@even_rosenbrock_f, @even_rosenbrock_grad, x0, m_lbfgs, tol, max_iter);
+s_new = S_full(:, end);  
+y_new = Y_full(:, end);
+
+oldest_idx = 1;
+S(:, oldest_idx) = s_new;
+Y(:, oldest_idx) = y_new;
+
+siT_yi = s_new' * y_new;
+if siT_yi <= 1e-10
+    error('Curvature condition failed for s_new^T y_new');
+end
+D(oldest_idx, oldest_idx) = siT_yi;
+
+L(1:m-1, 1:m-1) = L(2:m, 2:m); 
+L(m, :) = 0;
+for j = 1:m-1
+    L(m, j) = S(:, m)' * Y(:, j);
+end
+
+v = 1:m;
+v = [v(2:end) v(1)];
+disp('Updated mask vector v:');
+disp(v);
+
+SkT_B0_Sk = S' * B0 * S;
+M = [SkT_B0_Sk L; L' -D];
+U = [B0 * S Y];
+V = [S' * B0; Y'];
+B_updated = B0 - U * (M \ V);
+disp('B_3^(5) after update:');
+disp(B_updated);
+
+symmetry_norm_after = norm(B_updated - B_updated', 'fro');
+fprintf('Symmetry check for B_3^(5): %e\n', symmetry_norm_after);
+H_updated = inv(B_updated);
+frobenius_norm_after = norm(H_updated * B_updated - eye(n), 'fro');
+fprintf('Frobenius norm of H * B_3^(5) - I: %e\n', frobenius_norm_after);
+
+
