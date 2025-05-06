@@ -1,0 +1,146 @@
+function [x, fval, exitflag, iter, fvals, S, Y] = lbfgs_task4(f, grad_f, x0, m, tol, max_iter)
+
+    x = x0;
+    n = length(x);
+    iter = 0;
+    S = zeros(n, m);
+    Y = zeros(n, m);
+    rho = zeros(m, 1);
+    fvals = zeros(max_iter, 1); 
+
+    g = grad_f(x);
+    if norm(g) < tol
+        exitflag = 1;
+        fval = f(x);
+        iter = 0;
+        fvals = fval;
+        return;
+    end
+    
+    while iter < max_iter
+        q = g;
+        alpha = zeros(min(iter, m), 1);
+        
+        for i = min(iter, m):-1:1
+            if Y(:, i)' * S(:, i) <= 1e-10
+                continue; 
+            end
+            rho(i) = 1 / (Y(:, i)' * S(:, i));
+            alpha(i) = rho(i) * (S(:, i)' * q);
+            q = q - alpha(i) * Y(:, i);
+        end
+        
+        if iter == 0
+            gamma = 1 / (norm(g) + eps);
+        else
+            idx = min(iter, m);
+            gamma = (S(:, idx)' * Y(:, idx)) / (Y(:, idx)' * Y(:, idx) + eps);
+        end
+        
+        H0 = gamma * eye(n);
+        r = H0 * q;
+        
+        for i = 1:min(iter, m)
+            if rho(i) == 0
+                continue;
+            end
+            beta = rho(i) * (Y(:, i)' * r);
+            r = r + S(:, i) * (alpha(i) - beta);
+        end
+        
+        p = -r;
+        if g' * p >= 0
+            p = -g; 
+        end
+        
+        alpha = strong_wolfe_line_search(f, grad_f, x, p);
+        
+        x_new = x + alpha * p;
+        s_new = x_new - x;
+        g_new = grad_f(x_new);
+        y_new = g_new - g;
+        
+        if norm(g_new) < tol
+            exitflag = 1;
+            fval = f(x_new);
+            iter = iter;
+            fvals = fvals(1:iter);
+            return;
+        end
+        
+        if iter < m
+            S(:, iter+1) = s_new;
+            Y(:, iter+1) = y_new;
+        else
+            S = [S(:, 2:end), s_new];
+            Y = [Y(:, 2:end), y_new];
+        end
+        
+        x = x_new;
+        g = g_new;
+        iter = iter + 1;
+        fvals(iter) = f(x);
+    end
+    
+    exitflag = 0;
+    fval = f(x);
+    fvals = fvals(1:iter);
+end
+
+
+
+
+% Test
+x0 = zeros(10, 1);  
+m = 10;
+tol = 1e-4;
+max_iter = 10000;
+
+[x_opt, fval, exitflag, iter, fvals, S, Y] = lbfgs_task4(@even_rosenbrock_f, @even_rosenbrock_grad, x0, m, tol, max_iter);
+
+fprintf('Optimal x: [%f, %f]\n', x_opt(1), x_opt(2));
+fprintf('Optimal function value: %f\n', fval);
+fprintf('Iterations: %d\n', iter);
+
+% Plot 
+figure;
+semilogy(1:length(fvals), fvals, 'b-', 'LineWidth', 2);
+xlabel('Iteration');
+ylabel('Function Value (log scale)');
+title('Convergence of L-BFGS (Task 4) on Even Rosenbrock Function');
+grid on;
+saveas(gcf, 'task4_convergence.png');
+
+
+
+% Compute L_k and D_k
+StY = S' * Y;
+Lk = tril(StY, -1); 
+Dk = diag(diag(StY));
+
+if iter == 0
+    error('S and Y are empty');
+end
+num_pairs = min(iter, m); 
+S = S(:, 1:num_pairs);
+Y = Y(:, 1:num_pairs);
+Lk = Lk(1:num_pairs, 1:num_pairs);
+Dk = Dk(1:num_pairs, 1:num_pairs);
+
+gamma = (S(:, end)' * Y(:, end)) / (Y(:, end)' * Y(:, end) + eps);
+B0 = gamma * eye(size(S, 1));
+M = [S' * B0 * S, Lk; Lk', -Dk];
+Minv = inv(M);
+
+Bk = B0 - [B0*S, Y] * Minv * [S'*B0; Y'];
+
+symmetry_norm = norm(Bk - Bk');
+fprintf('Symmetry check for B_k: %e\n', symmetry_norm);
+
+H_k = inv(Bk);
+frobenius_norm = norm(H_k * Bk - eye(size(Bk)));
+fprintf('Frobenius norm of H_k * B_k - I: %e\n', frobenius_norm);
+
+disp('Computed B_k:');
+disp(Bk);
+
