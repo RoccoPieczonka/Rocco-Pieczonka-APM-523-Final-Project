@@ -1,0 +1,114 @@
+function [x, fval, exitflag, iter, fvals] = lbfgs(f, grad_f, x0, m, tol, max_iter)
+
+    x = x0;
+    n = length(x);
+    s_list = zeros(n, m);
+    y_list = zeros(n, m);
+    rho_list = zeros(m, 1);
+    k = 0;
+    fvals = zeros(max_iter, 1); 
+    
+    g = grad_f(x);
+    if norm(g) < tol
+        exitflag = 1;
+        fval = f(x);
+        iter = 0;
+        fvals = fval;
+        return;
+    end
+    
+    while k < max_iter
+        q = g;
+        alpha = zeros(min(k, m), 1);
+        
+        for i = min(k, m):-1:1
+            rho = rho_list(i);
+            alpha(i) = rho * (s_list(:, i)' * q);
+            q = q - alpha(i) * y_list(:, i);
+        end
+        
+        if k == 0
+            gamma = 1 / (norm(g) + eps); 
+        else
+            gamma = (s_list(:, min(k, m))' * y_list(:, min(k, m))) / (y_list(:, min(k, m))' * y_list(:, min(k, m)) + eps);
+        end
+        
+        H0 = gamma * eye(n);
+        r = H0 * q;
+        
+        for i = 1:min(k, m)
+            beta = rho_list(i) * (y_list(:, i)' * r);
+            r = r + s_list(:, i) * (alpha(i) - beta);
+        end
+        
+        p = -r;
+        
+        if g' * p >= 0
+            p = -g; 
+        end
+        
+        alpha = strong_wolfe_line_search(f, grad_f, x, p);
+        
+        x_new = x + alpha * p;
+        s = x_new - x;
+        g_new = grad_f(x_new);
+        y = g_new - g;
+        
+        if norm(g_new) < tol
+            exitflag = 1;
+            fval = f(x_new);
+            iter = k;
+            fvals = fvals(1:k);
+            return;
+        end
+        
+        if y' * s <= 1e-10
+            warning('Curvature condition violated');
+        else
+            if k >= m
+                s_list(:, 1:m-1) = s_list(:, 2:m);
+                y_list(:, 1:m-1) = y_list(:, 2:m);
+                rho_list(1:m-1) = rho_list(2:m);
+            end
+            s_list(:, min(k+1, m)) = s;
+            y_list(:, min(k+1, m)) = y;
+            rho_list(min(k+1, m)) = 1 / (y' * s);
+        end
+        
+        x = x_new;
+        g = g_new;
+        k = k + 1;
+        fvals(k) = f(x);
+    end
+    
+    exitflag = 0;
+    fval = f(x);
+    iter = max_iter;
+    fvals = fvals(1:k);
+end
+
+
+
+
+
+% Test 
+x0 = zeros(10, 1);
+m = 10;
+tol = 1e-4;
+max_iter = 10000;
+
+[x_opt, fval, exitflag, iter, fvals] = lbfgs(@even_rosenbrock_f, @even_rosenbrock_grad, x0, m, tol, max_iter);
+
+fprintf('Optimal x (first two components): [%f, %f]\n', x_opt(1), x_opt(2));
+fprintf('Optimal function value: %f\n', fval);
+fprintf('Exit flag: %d\n', exitflag);
+fprintf('Iterations: %d\n', iter);
+
+% Plot
+figure;
+semilogy(1:length(fvals), fvals, 'b-', 'LineWidth', 2);
+xlabel('Iteration');
+ylabel('Function Value (log scale)');
+title('Convergence of L-BFGS on Even Rosenbrock Function');
+grid on;
+saveas(gcf, 'task3_convergence.png');
